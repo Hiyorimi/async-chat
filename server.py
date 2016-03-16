@@ -1,22 +1,4 @@
 #!/usr/bin/env python
-#
-# Copyright 2009 Facebook
-#
-# Licensed under the Apache License, Version 2.0 (the "License"); you may
-# not use this file except in compliance with the License. You may obtain
-# a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
-# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
-# License for the specific language governing permissions and limitations
-# under the License.
-"""Simplified chat demo for websockets.
-
-Authentication, error handling, etc are left as an exercise for the reader :)
-"""
 
 import logging
 import tornado.escape
@@ -42,6 +24,7 @@ class Application(tornado.web.Application):
             cookie_secret="__TODO:_GENERATE_YOUR_OWN_RANDOM_VALUE_HERE__",
             template_path=os.path.join(os.path.dirname(__file__), "templates"),
             static_path=os.path.join(os.path.dirname(__file__), "static"),
+            debug=True
         )
         super(Application, self).__init__(handlers, **settings)
 
@@ -52,44 +35,69 @@ class MainHandler(tornado.web.RequestHandler):
 
 
 class ChatSocketHandler(tornado.websocket.WebSocketHandler):
-    waiters = set()
-    cache = []
-    cache_size = 200
+    message_types = [
+        'get_user_list',
+        # 'get_online_user_list',
+        'message'
+    ]
+    error_message = tornado.escape.json_encode(
+        {'type': 'error', 'message': 'bad message type'})
+
+    client_id = 0
+    clients = {}
 
     def get_compression_options(self):
         # Non-None enables compression with default options.
         return {}
 
     def open(self):
-        ChatSocketHandler.waiters.add(self)
+        ChatSocketHandler.client_id += 1
+        self.id = ChatSocketHandler.client_id
+        ChatSocketHandler.clients[self.id] = self
 
     def on_close(self):
-        ChatSocketHandler.waiters.remove(self)
-
-    @classmethod
-    def update_cache(cls, chat):
-        cls.cache.append(chat)
-        if len(cls.cache) > cls.cache_size:
-            cls.cache = cls.cache[-cls.cache_size:]
-
-    @classmethod
-    def send_updates(cls, chat):
-        logging.info("sending message to %d waiters", len(cls.waiters))
-        for waiter in cls.waiters:
-            try:
-                waiter.write_message(chat)
-            except:
-                logging.error("Error sending message", exc_info=True)
+        self.clients.pop(self.id)
 
     def on_message(self, message):
         logging.info("got message %r", message)
         parsed = tornado.escape.json_decode(message)
+        self.respond(parsed)
+
+    def respond(self, parsed):
+        message_type = parsed.get('type')
+        if message_type not in self.message_types:
+            self.write_error_message()
+            return
+
+        getattr(self, message_type)(parsed)
+
+    def get_user_list(self, parsed):
         response = tornado.escape.json_encode(
-            [
-                {'id': 1, 'name': 'name1', 'avatar': '', 'status': 'online'}
-            ]
+            [{'id': id, 'status': 'online'}
+             for id in self.clients.keys()]
         )
-        ChatSocketHandler.send_updates(response)
+        self.write_message(response)
+
+    def message(self, parsed):
+        message = parsed['message']
+        receiver_id = int(parsed['to'])
+        # time = parsed['time']
+
+        receiver_message = tornado.escape.json_encode(
+            {'type': 'message',
+             'message': message,
+             'from': self.id}
+        )
+        response = tornado.escape.json_encode(
+            {'type': 'status',
+             'id': receiver_id,
+             'status': 'online'}
+        )
+        self.write_message(response)
+        ChatSocketHandler.clients[receiver_id].write_message(receiver_message)
+
+    def write_error_message(self):
+        self.write_message(self.error_message)
 
 
 def main():
