@@ -9,9 +9,10 @@ import tornado.web
 import tornado.websocket
 import os.path
 
-from tornado.options import define, options
+from dao import DAO
 
-define("port", default=8888, help="run on the given port", type=int)
+
+PORT = 8888
 
 
 class Application(tornado.web.Application):
@@ -27,6 +28,8 @@ class Application(tornado.web.Application):
             debug=True
         )
         super(Application, self).__init__(handlers, **settings)
+        # Create a data access object for my application
+        self.dao = DAO()
 
 
 class MainHandler(tornado.web.RequestHandler):
@@ -44,6 +47,10 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
     }
     client_id = 0
     clients = {}
+
+    @property
+    def dao(self):
+        return self.application.dao
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -119,7 +126,7 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
 def main():
     tornado.options.parse_command_line()
     app = Application()
-    app.listen(options.port)
+    app.listen(PORT)
     tornado.ioloop.IOLoop.current().start()
 
 
