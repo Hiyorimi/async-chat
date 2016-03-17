@@ -8,7 +8,6 @@ import tornado.options
 import tornado.web
 import tornado.websocket
 import os.path
-import uuid
 
 from tornado.options import define, options
 
@@ -51,10 +50,6 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
     client_id = 0
     clients = {}
 
-    def get_compression_options(self):
-        # Non-None enables compression with default options.
-        return {}
-
     def open(self):
         ChatSocketHandler.client_id += 1
         self.id = ChatSocketHandler.client_id
@@ -65,6 +60,9 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
 
     def on_message(self, message):
         logging.info("got message %r", message)
+        if message == 'exit':
+            self.write_message('exit')
+
         try:
             parsed = tornado.escape.json_decode(message)
         except json.decoder.JSONDecodeError:
