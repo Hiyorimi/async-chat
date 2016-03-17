@@ -11,6 +11,7 @@ path.py==8.1.2
 pep8==1.7.0
 pexpect==4.0.1
 pickleshare==0.6
+pony==0.6.4
 ptyprocess==0.5.1
 pyflakes==1.0.0
 simplegeneric==0.8.1
