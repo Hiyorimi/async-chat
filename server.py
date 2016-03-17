@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import os.path
 import logging
 import json
 
@@ -10,8 +9,6 @@ import tornado.options
 import tornado.web
 import tornado.websocket
 
-from pony import orm
-
 from dao import DAO
 
 
@@ -20,24 +17,10 @@ PORT = 8888
 
 class Application(tornado.web.Application):
     def __init__(self):
-        handlers = [
-            (r"/", MainHandler),
-            (r"/chatsocket", ChatSocketHandler),
-        ]
-        settings = dict(
-            cookie_secret="__TODO:_GENERATE_YOUR_OWN_RANDOM_VALUE_HERE__",
-            template_path=os.path.join(os.path.dirname(__file__), "templates"),
-            static_path=os.path.join(os.path.dirname(__file__), "static"),
-            debug=True
-        )
-        super(Application, self).__init__(handlers, **settings)
+        super(Application, self).__init__(
+            [(r"/chatsocket", ChatSocketHandler)], debug=True)
         # Create a data access object for my application
         self.dao = DAO()
-
-
-class MainHandler(tornado.web.RequestHandler):
-    def get(self):
-        self.render("index.html", messages=ChatSocketHandler.cache)
 
 
 class ChatSocketHandler(tornado.websocket.WebSocketHandler):
