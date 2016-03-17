@@ -51,6 +51,10 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
 
     def open(self):
         ChatSocketHandler.client_id += 1
+        # You can start three or less clients
+        if ChatSocketHandler.client_id >= 4:
+            self.close()
+            return
 
         # First connected client gets the first user, second -- the second,
         # third -- the third.
@@ -65,8 +69,13 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
         ))
 
     def on_close(self):
-        # Remove this handler from register
-        del ChatSocketHandler.clients[self.user['id']]
+        try:
+            # Remove this handler from register
+            del ChatSocketHandler.clients[self.user['id']]
+        except AttributeError:
+            # Fourth client tried to connect, but we closed the connection,
+            # so this handler has no user attribute attached
+            pass
 
     def on_message(self, message):
         logging.info("GOT MESSAGE %r", message)
