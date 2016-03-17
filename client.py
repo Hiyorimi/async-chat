@@ -1,45 +1,68 @@
-import sys
+#!/usr/bin/env python
+
+# TODO: try to use higher level websocket API next time
 from threading import Thread
 
 import websocket
 
 
-if __name__ == "__main__":
+SERVER_URL = "ws://127.0.0.1:8888/chatsocket"
 
-    ws = websocket.create_connection("ws://127.0.0.1:8888/chatsocket")
 
-    def format_message(message):
-        return '\n{}\n> '.format(message)
+def format_message(message):
+    return '\n{}\n> '.format(message)
 
-    def print_message(message):
-        print(format_message(message), end='')
 
+def print_message(message):
+    print(format_message(message), end='')
+
+
+def main():
+    try:
+        ws = websocket.create_connection(SERVER_URL)
+    except ConnectionRefusedError:
+        print('Failed to connect to server')
+        return
+
+    ###################################################################
     def receive():
         while True:
             try:
                 message = ws.recv()
             except websocket._exceptions.WebSocketConnectionClosedException:
-                print('Connection closed by server')
-                sys.exit()
+                return
 
             if message == 'exit':
-                break
+                return
 
             print_message(message)
 
+    # Start a receiver thread
     t = Thread(target=receive)
     t.start()
+    ###################################################################
 
-    while True:
+    # Prompt user for messages and send them to the server
+    message = None
+    while message != 'exit':
         message = input('> ')
+
+        # There has been no 'exit' message and receiver is dead, so the server
+        # has closed the connection
+        if not t.is_alive():
+            print('Connection closed by server')
+            break
+
         if not message:
             print('Use "exit" to close the client')
             continue
 
         ws.send(message)
-        if message == 'exit':
-            break
+    else:
+        # 'exit' message has been input so wait for the receiver to die
+        t.join()
+        ws.close()
 
-    # Wait for thread-receiver to finish
-    t.join()
-    ws.close()
+
+if __name__ == "__main__":
+    main()

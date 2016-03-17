@@ -59,7 +59,8 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
         self.clients.pop(self.id)
 
     def on_message(self, message):
-        logging.info("got message %r", message)
+        logging.info("GOT MESSAGE %r", message)
+        # Help client to exit gracefully
         if message == 'exit':
             self.write_message('exit')
 
