@@ -35,11 +35,6 @@ class MainHandler(tornado.web.RequestHandler):
 
 
 class ChatSocketHandler(tornado.websocket.WebSocketHandler):
-    message_types = [
-        'get_user_list',
-        # 'get_online_user_list',
-        'message'
-    ]
     error_messages = {
         'bad_type': tornado.escape.json_encode(
             {'type': 'error', 'message': 'bad message type'}),
@@ -49,6 +44,14 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
     }
     client_id = 0
     clients = {}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.api_types = {
+            'get_user_list': self.on_get_user_list_msg,
+            'get_online_user_list': self.on_get_online_user_list_msg,
+            'message': self.on_message_msg
+        }
 
     def open(self):
         ChatSocketHandler.client_id += 1
@@ -74,20 +77,23 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
 
     def respond(self, parsed):
         message_type = parsed.get('type')
-        if message_type not in self.message_types:
+        if message_type not in self.api_types:
             self.write_error_message('bad_type')
             return
 
-        getattr(self, message_type)(parsed)
+        self.api_types[message_type](parsed)
 
-    def get_user_list(self, parsed):
+    def on_get_user_list_msg(self, parsed):
         response = tornado.escape.json_encode(
             [{'id': id, 'status': 'online'}
              for id in self.clients.keys()]
         )
         self.write_message(response)
 
-    def message(self, parsed):
+    def on_get_online_user_list_msg(self, parsed):
+        raise NotImplementedError
+
+    def on_message_msg(self, parsed):
         message = parsed['message']
         receiver_id = int(parsed['to'])
         # time = parsed['time']
