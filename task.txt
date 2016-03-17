@@ -1,0 +1,3 @@
+{"type": "message", "message": "Hello", "to": 2, "time": 1457097372059}
+{"type": "get_user_list"}
+{"type": "get_online_user_list"}

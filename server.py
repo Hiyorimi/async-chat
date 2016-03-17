@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+import json
 import tornado.escape
 import tornado.ioloop
 import tornado.options
@@ -40,9 +41,13 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
         # 'get_online_user_list',
         'message'
     ]
-    error_message = tornado.escape.json_encode(
-        {'type': 'error', 'message': 'bad message type'})
-
+    error_messages = {
+        'bad_type': tornado.escape.json_encode(
+            {'type': 'error', 'message': 'bad message type'}),
+        'bad_json': tornado.escape.json_encode(
+            {'type': 'error', 'message': 'invalid json in message'}
+        )
+    }
     client_id = 0
     clients = {}
 
@@ -60,13 +65,18 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
 
     def on_message(self, message):
         logging.info("got message %r", message)
-        parsed = tornado.escape.json_decode(message)
+        try:
+            parsed = tornado.escape.json_decode(message)
+        except json.decoder.JSONDecodeError:
+            self.write_error_message('bad_json')
+            return
+
         self.respond(parsed)
 
     def respond(self, parsed):
         message_type = parsed.get('type')
         if message_type not in self.message_types:
-            self.write_error_message()
+            self.write_error_message('bad_type')
             return
 
         getattr(self, message_type)(parsed)
@@ -96,8 +106,9 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
         self.write_message(response)
         ChatSocketHandler.clients[receiver_id].write_message(receiver_message)
 
-    def write_error_message(self):
-        self.write_message(self.error_message)
+    def write_error_message(self, error_type):
+        error_message = self.error_messages[error_type]
+        self.write_message(error_message)
 
 
 def main():
