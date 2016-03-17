@@ -1,11 +1,21 @@
+import os
+from datetime import datetime
+
 from pony import orm
 
 
+# All data retrieving methods return dicts because of the way
+# Pony orm works (see db_session decorator explanation).
 class DAO:
     '''
     Data access object -- handles interactions with the database.
     '''
     def __init__(self, db_name='async_chat_db.sqlite'):
+        try:
+            os.remove(db_name)
+        except FileNotFoundError:
+            pass
+
         self.db = orm.Database()
         self.db.bind('sqlite', db_name, create_db=True)
         self.define_entities()
@@ -13,7 +23,7 @@ class DAO:
         self.create_users()
 
     def define_entities(self):
-        # Entity instances are stored in db.
+
         class User(self.db.Entity):
             from_messages = orm.Set('Message', reverse='from_user')
             to_messages = orm.Set('Message', reverse='to_user')
@@ -25,7 +35,7 @@ class DAO:
             text = orm.Required(str)
             from_user = orm.Required(User)
             to_user = orm.Required(User)
-            timestamp = orm.Required(int)
+            time = orm.Required(int, size=64)
 
         self.Message = Message
 
@@ -33,3 +43,25 @@ class DAO:
     def create_users(self):
         self.User(name='John')
         self.User(name='Bob')
+        self.User(name='Susan')
+
+    @orm.db_session
+    def get_users(self):
+        return [
+            {'id': u.id, 'name': u.name}
+            for u in orm.select(u for u in self.User)
+        ]
+
+    @orm.db_session
+    def get_user(self, pk):
+        user = self.User[pk]
+        return {'id': user.id, 'name': user.name}
+
+    @orm.db_session
+    def save_message(self, text, from_user, to_user, time):
+        self.Message(
+            text=text,
+            from_user=from_user,
+            to_user=to_user,
+            time=time
+        )
