@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Async Chat</title>
+    <link rel="stylesheet" href="{{ static_url("blog.css") }}" type="text/css">
+    {% block head %}{% end %}
+  </head>
+  <body>
+    <div id="body">
+      <div id="header">
+        <div style="float:right">
+          {% if current_user %}
+          {{ current_user['name'] }} <a href="/logout?next={{ url_escape(request.uri) }}">{{ _("Log out") }}</a>
+          {% else %}
+          {% end %}
+        </div>
+        <h1><a href="/">Async Chat</a></h1>
+      </div>
+      <div id="content">{% block body %}{% end %}</div>
+    </div>
+    {% block bottom %}{% end %}
+  </body>
+</html>

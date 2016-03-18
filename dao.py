@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 
 from pony import orm
 
@@ -53,9 +52,9 @@ class DAO:
         ]
 
     @orm.db_session
-    def get_user(self, pk):
-        user = self.User[pk]
-        return {'id': user.id, 'name': user.name}
+    def get_user(self, pk=None, **kwargs):
+        user = self.User[pk] if pk else self.User.get(**kwargs)
+        return {'id': user.id, 'name': user.name} if user else None
 
     @orm.db_session
     def save_message(self, text, from_user, to_user, time):

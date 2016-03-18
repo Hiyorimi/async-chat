@@ -2,12 +2,14 @@
 
 import logging
 import json
+import os
 
 import tornado.escape
 import tornado.ioloop
 import tornado.options
 import tornado.web
 import tornado.websocket
+from tornado import gen
 
 from dao import DAO
 
@@ -17,13 +19,65 @@ PORT = 8888
 
 class Application(tornado.web.Application):
     def __init__(self):
-        super(Application, self).__init__(
-            [(r"/chatsocket", ChatSocketHandler)], debug=True)
+        handlers = [
+            (r"/", MainHandler),
+            (r"/chatsocket", ChatSocketHandler),
+            (r"/login", AuthLoginHandler),
+            (r"/logout", AuthLogoutHandler),
+        ]
+        settings = dict(
+            template_path=os.path.join(os.path.dirname(__file__), "templates"),
+            static_path=os.path.join(os.path.dirname(__file__), "static"),
+            xsrf_cookies=True,
+            cookie_secret="__TODO:_GENERATE_YOUR_OWN_RANDOM_VALUE_HERE__",
+            login_url="/login",
+            debug=True
+        )
+        super(Application, self).__init__(handlers, **settings)
         # Create a data access object for my application
         self.dao = DAO()
 
 
-class ChatSocketHandler(tornado.websocket.WebSocketHandler):
+class HandlerMixin:
+
+    @property
+    def dao(self):
+        return self.application.dao
+
+    def get_current_user(self):
+        user_id = self.get_cookie('async_chat_user')
+        return self.dao.get_user(int(user_id)) if user_id else None
+
+
+class MainHandler(HandlerMixin, tornado.web.RequestHandler):
+
+    @tornado.web.authenticated
+    def get(self):
+        self.render('index.html')
+
+
+class AuthLoginHandler(HandlerMixin, tornado.web.RequestHandler):
+
+    def get(self):
+        self.render('login.html', error=None)
+
+    @gen.coroutine
+    def post(self):
+        user = self.dao.get_user(name=self.get_argument('username'))
+        if user:
+            self.set_cookie('async_chat_user', str(user['id']))
+            self.redirect(self.get_argument('next', '/'))
+        else:
+            self.render('login.html', error='incorrect username')
+
+
+class AuthLogoutHandler(HandlerMixin, tornado.web.RequestHandler):
+    def get(self):
+        self.clear_cookie('async_chat_user')
+        self.redirect(self.get_argument("next", "/login"))
+
+
+class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
     error_messages = {
         'bad_type': tornado.escape.json_encode(
             {'type': 'error', 'message': 'bad message type'}),
@@ -36,10 +90,6 @@ class ChatSocketHandler(tornado.websocket.WebSocketHandler):
 
     # {user_id: handler} mapping
     clients = {}
-
-    @property
-    def dao(self):
-        return self.application.dao
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
