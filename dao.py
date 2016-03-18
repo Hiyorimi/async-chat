@@ -1,6 +1,7 @@
 import os
 
 from pony import orm
+from tornado.util import ObjectDict
 
 
 # All data retrieving methods return dicts because of the way
@@ -47,14 +48,14 @@ class DAO:
     @orm.db_session
     def get_users(self):
         return [
-            {'id': u.id, 'name': u.name}
+            ObjectDict(id=u.id, name=u.name)
             for u in orm.select(u for u in self.User)
         ]
 
     @orm.db_session
     def get_user(self, pk=None, **kwargs):
         user = self.User[pk] if pk else self.User.get(**kwargs)
-        return {'id': user.id, 'name': user.name} if user else None
+        return ObjectDict(id=user.id, name=user.name) if user else None
 
     @orm.db_session
     def save_message(self, text, from_user, to_user, time):

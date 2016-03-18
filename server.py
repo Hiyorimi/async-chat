@@ -67,14 +67,14 @@ class AuthLoginHandler(HandlerMixin, tornado.web.RequestHandler):
         name = self.get_argument('username') or 'username'  # need to pass a str to pony
         user = self.dao.get_user(name=name)
         if user:
-            self.set_cookie('async_chat_user', str(user['id']))
+            self.set_cookie('async_chat_user', str(user.id))
             self.redirect(self.get_argument('next', '/'))
         else:
             users = self.dao.get_users()
             assert len(users) == 3, 'Users were not created in DAO __init__'
 
-            usernames = (', '.join(u['name'] for u in users[:-1]) +
-                         ' or ' + users[-1]['name'])
+            usernames = (', '.join(u.name for u in users[:-1]) +
+                         ' or ' + users[-1].name)
             self.render('login.html',
                         error='incorrect username (use {})'.format(usernames))
 
@@ -108,20 +108,20 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         if not self.current_user:
             self.close()
         # Register this handler
-        ChatSocketHandler.clients[self.current_user['id']].add(self)
+        ChatSocketHandler.clients[self.current_user.id].add(self)
 
         self.write_message(tornado.escape.json_encode(
             {'type': 'connected',
-             'id': self.current_user['id'],
-             'name': self.current_user['name']}
+             'id': self.current_user.id,
+             'name': self.current_user.name}
         ))
 
     def on_close(self):
-        handlers_set = ChatSocketHandler.clients[self.current_user['id']]
+        handlers_set = ChatSocketHandler.clients[self.current_user.id]
         handlers_set.discard(self)
         if not handlers_set:
             # remove this user_id from clients register
-            del ChatSocketHandler.clients[self.current_user['id']]
+            del ChatSocketHandler.clients[self.current_user.id]
 
     def on_message(self, message):
         logging.info("GOT MESSAGE %r", message)
@@ -143,8 +143,8 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
     def on_get_user_list_msg(self, parsed):
         users = self.dao.get_users()
         for u in users:
-            u['status'] = (
-                'online' if u['id'] in ChatSocketHandler.clients else 'offline'
+            u.status = (
+                'online' if u.id in ChatSocketHandler.clients else 'offline'
             )
         response = tornado.escape.json_encode(users)
         self.write_message(response)
@@ -153,13 +153,13 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         # There may be multiple handlers for a user, but I only need one item in
         # the list of online users for a user, so I build this help dict
         help_dict = {
-            h.current_user['id']: h.current_user
+            h.current_user.id: h.current_user
             for handler_set in ChatSocketHandler.clients.values()
             for h in handler_set
         }
         online_users = list(help_dict.values())
         for u in online_users:
-            u['status'] = 'online'
+            u.status = 'online'
 
         self.write_message(tornado.escape.json_encode(online_users))
 
@@ -170,7 +170,7 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
 
         self.dao.save_message(
             text=message,
-            from_user=self.current_user['id'],
+            from_user=self.current_user.id,
             to_user=receiver_id,
             time=time
         )
@@ -181,7 +181,7 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         receiver_message = tornado.escape.json_encode(
             {'type': 'message',
              'message': message,
-             'from': self.current_user['id']}
+             'from': self.current_user.id}
         )
         response = tornado.escape.json_encode(
             {'type': 'status',
