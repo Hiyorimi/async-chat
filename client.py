@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# TODO: try to use higher level websocket API next time
 from threading import Thread
 import argparse
 
@@ -21,7 +20,8 @@ def print_message(message):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('username', help='choose a username')
+    parser.add_argument('username',
+                        help='choose a username (John, Bob or Susan)')
     args = parser.parse_args()
 
     try:
@@ -30,7 +30,8 @@ def main():
         print('Failed to connect to server')
         return
 
-    ws.send(tornado.escape.json_encode({'type': 'auth', 'username': args.username}))
+    ws.send(tornado.escape.json_encode(
+        {'type': 'auth', 'username': args.username}))
 
     ###################################################################
     def receive():
@@ -50,11 +51,13 @@ def main():
 
     # Prompt user for messages and send them to the server
     message = None
-    while message != 'q':
+    while 1:
         message = input('> ')
 
-        # Server closed the connection, receiver is dead
-        if not t.is_alive():
+        # Quit message received or server closed the connection and
+        # receiver is dead
+        if message == 'q' or not t.is_alive():
+            ws.close()
             break
 
         if not message:

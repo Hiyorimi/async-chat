@@ -63,7 +63,9 @@ class AuthLoginHandler(HandlerMixin, tornado.web.RequestHandler):
         self.render('login.html', error=None)
 
     def post(self):
-        name = self.get_argument('username') or 'username'  # need to pass a str to pony
+        # Pony needs non-empty string, so I pass 'username' in case of
+        # empty string in the form's username input
+        name = self.get_argument('username') or 'username'
         user = self.dao.get_user(name=name)
         if user:
             self.set_cookie('async_chat_user', str(user.id))
@@ -78,20 +80,24 @@ class AuthLoginHandler(HandlerMixin, tornado.web.RequestHandler):
                         error='incorrect username (use {})'.format(usernames))
 
 
-class AuthLogoutHandler(HandlerMixin, tornado.web.RequestHandler):
+class AuthLogoutHandler(tornado.web.RequestHandler):
+
     def get(self):
         self.clear_cookie('async_chat_user')
         self.redirect(self.get_argument("next", "/login"))
 
 
 class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
-    error_messages = {
+    server_messages = {
         'bad_type': tornado.escape.json_encode(
             {'type': 'error', 'message': 'bad message type'}),
         'bad_json': tornado.escape.json_encode(
-            {'type': 'error', 'message': 'invalid json in message'}),
+            {'type': 'error', 'message': 'invalid json object in message'}),
         'bad_username': tornado.escape.json_encode(
-            {'type': 'error', 'message': 'bad username'})
+            {'type': 'error', 'message': 'bad username'}),
+        'bad_message': tornado.escape.json_encode(
+            {'type': 'error', 'message': 'bad message for this type'}
+        )
     }
     # {user_id: {handler1, handler2..}} mapping
     clients = defaultdict(set)
@@ -107,15 +113,11 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
 
     def open(self):
         if not self.current_user:
+            # Console client connected, see authentication in `on_auth_msg`
             return
 
         self.register_client(self.current_user)
-
-        self.write_message(tornado.escape.json_encode(
-            {'type': 'connected',
-             'id': self.current_user.id,
-             'name': self.current_user.name}
-        ))
+        self.write_connected_message()
 
     def on_close(self):
         if not self.current_user:
@@ -133,6 +135,10 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         try:
             parsed = tornado.escape.json_decode(message)
         except json.decoder.JSONDecodeError:
+            self.write_error_message('bad_json')
+            return
+
+        if not isinstance(parsed, dict):
             self.write_error_message('bad_json')
             return
 
@@ -169,22 +175,35 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
 
     @gen.coroutine
     def on_auth_msg(self, parsed):
-        username = parsed.get('username')
+        # Pony needs non-empty string to look up users by name
+        username = parsed.get('username', 'username')
         user = self.dao.get_user(name=username)
         if not user:
+            # Wait for self.write_error_message() to finish before closing
+            # the socket
             yield self.write_error_message('bad_username')
             self.close()
         else:
+            # Handler needs this attribute in its other methods
             self.current_user = user
             self.register_client(user)
+            self.write_connected_message()
 
     def register_client(self, user):
         ChatSocketHandler.clients[user.id].add(self)
 
     def on_message_msg(self, parsed):
-        message = parsed['message']
-        receiver_id = int(parsed['to'])
-        time = parsed['time']
+        message = parsed.get('message')
+        try:
+            receiver_id = int(parsed.get('to'))
+        except (ValueError, TypeError):
+            receiver_id = None
+
+        time = parsed.get('time')
+
+        if not all([message, receiver_id, time]):
+            self.write_error_message('bad_message')
+            return
 
         self.dao.save_message(
             text=message,
@@ -216,8 +235,15 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
 
     @gen.coroutine
     def write_error_message(self, error_type):
-        error_message = self.error_messages[error_type]
+        error_message = self.server_messages[error_type]
         yield self.write_message(error_message)
+
+    def write_connected_message(self):
+        self.write_message(tornado.escape.json_encode(
+            {'type': 'connected',
+             'id': self.current_user.id,
+             'name': self.current_user.name}
+        ))
 
 
 def main():
