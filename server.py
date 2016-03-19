@@ -5,6 +5,7 @@ import json
 import os
 
 import tornado.escape
+from tornado import gen
 import tornado.ioloop
 import tornado.options
 import tornado.web
@@ -88,8 +89,9 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         'bad_type': tornado.escape.json_encode(
             {'type': 'error', 'message': 'bad message type'}),
         'bad_json': tornado.escape.json_encode(
-            {'type': 'error', 'message': 'invalid json in message'}
-        )
+            {'type': 'error', 'message': 'invalid json in message'}),
+        'bad_username': tornado.escape.json_encode(
+            {'type': 'error', 'message': 'bad username'})
     }
     # {user_id: {handler1, handler2..}} mapping
     clients = defaultdict(set)
@@ -99,15 +101,15 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         self.api_types = {
             'get_user_list': self.on_get_user_list_msg,
             'get_online_user_list': self.on_get_online_user_list_msg,
-            'message': self.on_message_msg
+            'message': self.on_message_msg,
+            'auth': self.on_auth_msg
         }
 
     def open(self):
         if not self.current_user:
-            self.close()
             return
-        # Register this handler
-        ChatSocketHandler.clients[self.current_user.id].add(self)
+
+        self.register_client(self.current_user)
 
         self.write_message(tornado.escape.json_encode(
             {'type': 'connected',
@@ -165,6 +167,20 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
 
         self.write_message(tornado.escape.json_encode(online_users))
 
+    @gen.coroutine
+    def on_auth_msg(self, parsed):
+        username = parsed.get('username')
+        user = self.dao.get_user(name=username)
+        if not user:
+            yield self.write_error_message('bad_username')
+            self.close()
+        else:
+            self.current_user = user
+            self.register_client(user)
+
+    def register_client(self, user):
+        ChatSocketHandler.clients[user.id].add(self)
+
     def on_message_msg(self, parsed):
         message = parsed['message']
         receiver_id = int(parsed['to'])
@@ -198,9 +214,10 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         for handler in ChatSocketHandler.clients[receiver_id]:
             handler.write_message(receiver_message)
 
+    @gen.coroutine
     def write_error_message(self, error_type):
         error_message = self.error_messages[error_type]
-        self.write_message(error_message)
+        yield self.write_message(error_message)
 
 
 def main():
