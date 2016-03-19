@@ -9,7 +9,6 @@ import tornado.ioloop
 import tornado.options
 import tornado.web
 import tornado.websocket
-from tornado import gen
 from collections import defaultdict
 
 from dao import DAO
@@ -62,7 +61,6 @@ class AuthLoginHandler(HandlerMixin, tornado.web.RequestHandler):
     def get(self):
         self.render('login.html', error=None)
 
-    @gen.coroutine
     def post(self):
         name = self.get_argument('username') or 'username'  # need to pass a str to pony
         user = self.dao.get_user(name=name)
@@ -107,6 +105,7 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
     def open(self):
         if not self.current_user:
             self.close()
+            return
         # Register this handler
         ChatSocketHandler.clients[self.current_user.id].add(self)
 
@@ -117,6 +116,9 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         ))
 
     def on_close(self):
+        if not self.current_user:
+            return
+
         handlers_set = ChatSocketHandler.clients[self.current_user.id]
         handlers_set.discard(self)
         if not handlers_set:

@@ -30,37 +30,31 @@ def main():
             try:
                 message = ws.recv()
             except websocket._exceptions.WebSocketConnectionClosedException:
-                return
-
-            if message == 'exit':
+                print('Connection closed by server (press Enter to exit)')
                 return
 
             print_message(message)
 
     # Start a receiver thread
-    t = Thread(target=receive)
+    t = Thread(target=receive, daemon=True)
     t.start()
     ###################################################################
 
     # Prompt user for messages and send them to the server
     message = None
-    while message != 'exit':
+    while message != 'q':
         message = input('> ')
 
-        # There has been no 'exit' message and receiver is dead, so the server
-        # has closed the connection
+        # Server closed the connection, receiver is dead
         if not t.is_alive():
-            print('Connection closed by server')
             break
 
         if not message:
-            print('Use "exit" to close the client')
+            print('Use q to close the client')
             continue
 
         ws.send(message)
     else:
-        # 'exit' message has been input so wait for the receiver to die
-        t.join()
         ws.close()
 
 
