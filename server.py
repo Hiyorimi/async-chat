@@ -15,7 +15,7 @@ from collections import defaultdict
 from dao import DAO
 
 
-PORT = 8888
+PORT = os.environ.get('PORT', 8888)
 
 
 class Application(tornado.web.Application):
