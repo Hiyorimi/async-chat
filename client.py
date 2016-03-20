@@ -20,14 +20,22 @@ def print_message(message):
 
 
 def main():
+    # Parse cli arguments ############
     parser = argparse.ArgumentParser()
-    parser.add_argument('username',
-                        help='choose a username (John, Bob or Susan)')
-    parser.add_argument('--host', default='localhost',
-                        help='server url or ip')
-    parser.add_argument('--port', default='8888',
-                        help='server port')
+    parser.add_argument(
+        'username', help='choose a username (John, Bob or Susan)'
+    )
+    parser.add_argument(
+        '--host', default='localhost',
+        help='server url or ip (heroku url is "async-chat.herokuapp.com")'
+    )
+    parser.add_argument(
+        '--port', default='8888',
+        help=('server port (use 443 to connect to the server, '
+              'deployed on heroku)')
+    )
     args = parser.parse_args()
+    ##########################
 
     try:
         ws = websocket.create_connection(
@@ -36,6 +44,7 @@ def main():
                 host=args.host,
                 port=args.port
             ),
+            # Don't validate ssl certificates
             sslopt={"cert_reqs": ssl.CERT_NONE},
         )
     except ConnectionRefusedError:
