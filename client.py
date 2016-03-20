@@ -2,12 +2,13 @@
 
 from threading import Thread
 import argparse
+import ssl
 
 import websocket
 import tornado.escape
 
 
-SERVER_URL = "ws://127.0.0.1:8888/chatsocket"
+SERVER_URL = "%(protocol)s://%(host)s:%(port)s/chatsocket"
 
 
 def format_message(message):
@@ -22,10 +23,21 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('username',
                         help='choose a username (John, Bob or Susan)')
+    parser.add_argument('--host', default='localhost',
+                        help='server url or ip')
+    parser.add_argument('--port', default='8888',
+                        help='server port')
     args = parser.parse_args()
 
     try:
-        ws = websocket.create_connection(SERVER_URL)
+        ws = websocket.create_connection(
+            SERVER_URL % dict(
+                protocol=('ws' if args.host == 'localhost' else 'wss'),
+                host=args.host,
+                port=args.port
+            ),
+            sslopt={"cert_reqs": ssl.CERT_NONE},
+        )
     except ConnectionRefusedError:
         print('Failed to connect to server')
         return

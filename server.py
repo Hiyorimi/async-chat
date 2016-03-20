@@ -111,6 +111,9 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
             'auth': self.on_auth_msg
         }
 
+    def check_origin(self, origin):
+        return True
+
     def open(self):
         if not self.current_user:
             # Console client connected, see authentication in `on_auth_msg`
