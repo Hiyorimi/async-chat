@@ -8,19 +8,33 @@ import websocket
 import tornado.escape
 
 
-SERVER_URL = "%(protocol)s://%(host)s:%(port)s/chatsocket"
+SERVER_URL = "{protocol}://{host}:{port}/chatsocket"
+QUIT = 'q'
+PROMPT = '> '
 
 
 def format_message(message):
-    return '\n{}\n> '.format(message)
+    return '\n{}\n{}'.format(message, PROMPT)
 
 
 def print_message(message):
     print(format_message(message), end='')
 
 
-def main():
-    # Parse cli arguments ############
+def receive(ws):
+    while True:
+        try:
+            message = ws.recv()
+        except websocket._exceptions.WebSocketConnectionClosedException:
+            return
+
+        if message == 'exit':
+            return
+
+        print_message(message)
+
+
+def parse_cli_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         'username', help='choose a username (John, Bob or Susan)'
@@ -34,16 +48,17 @@ def main():
         help=('server port (use 443 to connect to the server, '
               'deployed on heroku)')
     )
-    args = parser.parse_args()
-    ##########################
+    return parser.parse_args()
 
+
+def main(args):
     try:
         ws = websocket.create_connection(
-            SERVER_URL % dict(
+            SERVER_URL.format(dict(
                 protocol=('ws' if args.host == 'localhost' else 'wss'),
                 host=args.host,
                 port=args.port
-            ),
+            )),
             # Don't validate ssl certificates
             sslopt={"cert_reqs": ssl.CERT_NONE},
         )
@@ -54,41 +69,28 @@ def main():
     ws.send(tornado.escape.json_encode(
         {'type': 'auth', 'username': args.username}))
 
-    ###################################################################
-    def receive():
-        while True:
-            try:
-                message = ws.recv()
-            except websocket._exceptions.WebSocketConnectionClosedException:
-                print('Connection closed by server (press Enter to exit)')
-                return
-
-            print_message(message)
-
-    # Start a receiver thread
-    t = Thread(target=receive, daemon=True)
+    t = Thread(target=receive, args=(ws,), daemon=True)
     t.start()
-    ###################################################################
 
     # Prompt user for messages and send them to the server
     message = None
-    while 1:
-        message = input('> ')
+    try:
+        while 1:
+            message = input(PROMPT)
 
-        # Quit message received or server closed the connection and
-        # receiver is dead
-        if message == 'q' or not t.is_alive():
-            ws.close()
-            break
+            # Quit message received or server closed the connection and
+            # receiver is dead
+            if message == QUIT or not t.is_alive():
+                break
 
-        if not message:
-            print('Use q to close the client')
-            continue
+            if not message:
+                print('Use {} to close the client'.format(QUIT))
+                continue
 
-        ws.send(message)
-    else:
+            ws.send(message)
+    finally:
         ws.close()
 
 
 if __name__ == "__main__":
-    main()
+    main(parse_cli_arguments())
