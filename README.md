@@ -15,4 +15,5 @@ You can use browser and console client to chat with each other.
 Any valid user can have multiple connections open and chat with other users.
 
 
-Project is deployed on Heroku, you can see it [there](https://async-chat.herokuapp.com/) (web interface and cli client)
+Project is deployed on Heroku, you can see it [there](https://async-chat.herokuapp.com/).
+You can use web interface, or connect with console client.
