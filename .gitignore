@@ -3,3 +3,4 @@ Session.vim
 .python-version
 *.sqlite
 __pycache__
+tags

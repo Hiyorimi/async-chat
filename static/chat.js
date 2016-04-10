@@ -26,7 +26,13 @@ var updater = {
     socket: null,
 
     start: function() {
-        var url = "wss://" + location.host + "/chatsocket";
+        var protocol;
+        if (location.hostname == 'localhost') {
+            protocol = "ws://";
+        } else {
+            protocol = "wss://";
+        }
+        var url = protocol + location.host + "/chatsocket";
         updater.socket = new WebSocket(url);
         updater.socket.onmessage = function(event) {
             updater.showMessage(event.data);

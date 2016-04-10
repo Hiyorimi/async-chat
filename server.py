@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-import logging
+from collections import defaultdict
 import json
+import logging
 import os
 
 import tornado.escape
@@ -10,15 +11,15 @@ import tornado.ioloop
 import tornado.options
 import tornado.web
 import tornado.websocket
-from collections import defaultdict
 
-from dao import DAO
+from dao import DB, DataAccessObject, User, Message
 
 
 PORT = os.environ.get('PORT', 8888)
 
 
 class Application(tornado.web.Application):
+
     def __init__(self):
         handlers = [
             (r"/", MainHandler),
@@ -36,7 +37,7 @@ class Application(tornado.web.Application):
         )
         super(Application, self).__init__(handlers, **settings)
         # Create a data access object for my application
-        self.dao = DAO()
+        self.dao = DataAccessObject(DB, User, Message)
 
 
 class HandlerMixin:
@@ -46,7 +47,7 @@ class HandlerMixin:
         return self.application.dao
 
     def get_current_user(self):
-        user_id = self.get_cookie('async_chat_user')
+        user_id = self.get_cookie('user')
         return self.dao.get_user(int(user_id)) if user_id else None
 
 
@@ -63,48 +64,52 @@ class AuthLoginHandler(HandlerMixin, tornado.web.RequestHandler):
         self.render('login.html', error=None)
 
     def post(self):
-        # Pony needs non-empty string, so I pass 'username' in case of
-        # empty string in the form's username input
-        name = self.get_argument('username') or 'username'
+        users = self.dao.get_users()
+        usernames = (', '.join(u.name for u in users[:-1]) +
+                     ' or ' + users[-1].name)
+        error = 'Incorrect username (use {})'.format(usernames)
+
+        name = self.get_argument('username')
+        if not name.strip():
+            self.render('login.html', error=error)
+            return
+
         user = self.dao.get_user(name=name)
         if user:
-            self.set_cookie('async_chat_user', str(user.id))
+            self.set_cookie('user', str(user.id))
             self.redirect(self.get_argument('next', '/'))
         else:
-            users = self.dao.get_users()
-            assert len(users) == 3, 'Users were not created in DAO __init__'
-
-            usernames = (', '.join(u.name for u in users[:-1]) +
-                         ' or ' + users[-1].name)
-            self.render('login.html',
-                        error='incorrect username (use {})'.format(usernames))
+            self.render('login.html', error=error)
 
 
 class AuthLogoutHandler(tornado.web.RequestHandler):
 
     def get(self):
-        self.clear_cookie('async_chat_user')
+        self.clear_cookie('user')
         self.redirect(self.get_argument("next", "/login"))
 
 
 class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
     server_messages = {
-        'bad_type': tornado.escape.json_encode(
-            {'type': 'error', 'message': 'bad message type'}),
-        'bad_json': tornado.escape.json_encode(
-            {'type': 'error', 'message': 'invalid json object in message'}),
-        'bad_username': tornado.escape.json_encode(
-            {'type': 'error', 'message': 'bad username'}),
-        'bad_message': tornado.escape.json_encode(
-            {'type': 'error', 'message': 'bad message for this type'}
-        )
+        'bad_type': tornado.escape.json_encode({
+            'type': 'error', 'message': 'bad message type'
+        }),
+        'bad_json': tornado.escape.json_encode({
+            'type': 'error', 'message': 'invalid json object in message'
+        }),
+        'bad_username': tornado.escape.json_encode({
+            'type': 'error', 'message': 'bad username'
+        }),
+        'bad_message': tornado.escape.json_encode({
+            'type': 'error', 'message': 'bad message for this type'
+        })
     }
     # {user_id: {handler1, handler2..}} mapping
     clients = defaultdict(set)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.api_types = {
+        self.api_message_types = {
             'get_user_list': self.on_get_user_list_msg,
             'get_online_user_list': self.on_get_online_user_list_msg,
             'message': self.on_message_msg,
@@ -146,12 +151,12 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
             return
 
         message_type = parsed.get('type')
-        if message_type not in self.api_types:
+        if message_type not in self.api_message_types:
             self.write_error_message('bad_type')
             return
 
         # Call the right bound method for this message type
-        self.api_types[message_type](parsed)
+        self.api_message_types[message_type](parsed)
 
     def on_get_user_list_msg(self, parsed):
         users = self.dao.get_users()
@@ -217,17 +222,16 @@ class ChatSocketHandler(HandlerMixin, tornado.websocket.WebSocketHandler):
         status = (
             'online' if receiver_id in ChatSocketHandler.clients else 'offline'
         )
-
-        receiver_message = tornado.escape.json_encode(
-            {'type': 'message',
-             'message': message,
-             'from': self.current_user.id}
-        )
-        response = tornado.escape.json_encode(
-            {'type': 'status',
-             'id': receiver_id,
-             'status': status}
-        )
+        receiver_message = tornado.escape.json_encode({
+            'type': 'message',
+            'message': message,
+            'from': self.current_user.id
+        })
+        response = tornado.escape.json_encode({
+            'type': 'status',
+            'id': receiver_id,
+            'status': status
+        })
         self.write_message(response)
 
         if status == 'offline':

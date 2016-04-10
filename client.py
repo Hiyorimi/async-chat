@@ -3,6 +3,7 @@
 from threading import Thread
 import argparse
 import ssl
+import contextlib
 
 import websocket
 import tornado.escape
@@ -11,6 +12,14 @@ import tornado.escape
 SERVER_URL = "{protocol}://{host}:{port}/chatsocket"
 QUIT = 'q'
 PROMPT = '> '
+
+
+@contextlib.contextmanager
+def socket(ws):
+    try:
+        yield ws
+    finally:
+        ws.close()
 
 
 def format_message(message):
@@ -26,9 +35,6 @@ def receive(ws):
         try:
             message = ws.recv()
         except websocket._exceptions.WebSocketConnectionClosedException:
-            return
-
-        if message == 'exit':
             return
 
         print_message(message)
@@ -54,11 +60,11 @@ def parse_cli_arguments():
 def main(args):
     try:
         ws = websocket.create_connection(
-            SERVER_URL.format(dict(
+            SERVER_URL.format(
                 protocol=('ws' if args.host == 'localhost' else 'wss'),
                 host=args.host,
                 port=args.port
-            )),
+            ),
             # Don't validate ssl certificates
             sslopt={"cert_reqs": ssl.CERT_NONE},
         )
@@ -66,15 +72,16 @@ def main(args):
         print('Failed to connect to server')
         return
 
-    ws.send(tornado.escape.json_encode(
-        {'type': 'auth', 'username': args.username}))
-
     t = Thread(target=receive, args=(ws,), daemon=True)
     t.start()
 
-    # Prompt user for messages and send them to the server
-    message = None
-    try:
+    with socket(ws) as ws:
+        ws.send(tornado.escape.json_encode(
+            {'type': 'auth', 'username': args.username}))
+
+        # Prompt user for messages and send them to the server
+        message = None
+
         while 1:
             message = input(PROMPT)
 
@@ -88,8 +95,6 @@ def main(args):
                 continue
 
             ws.send(message)
-    finally:
-        ws.close()
 
 
 if __name__ == "__main__":
